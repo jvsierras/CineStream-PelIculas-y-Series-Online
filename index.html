@@ -46,7 +46,6 @@
     
     <!-- HOME -->
     <section id="home" class="section active">
-        <!-- Hero Banner -->
         <div class="hero" id="hero">
             <div class="hero-overlay"></div>
             <div class="hero-content">
@@ -64,35 +63,23 @@
         </div>
 
         <div class="container">
-            <!-- Películas Populares -->
             <div class="content-row">
-                <h2 class="row-title">
-                    <i class="fa-solid fa-fire"></i> Películas Populares
-                </h2>
+                <h2 class="row-title"><i class="fa-solid fa-fire"></i> Películas Populares</h2>
                 <div class="cards-grid" id="popularMovies"></div>
             </div>
 
-            <!-- Series Trending -->
             <div class="content-row">
-                <h2 class="row-title">
-                    <i class="fa-solid fa-chart-line"></i> Series del Momento
-                </h2>
+                <h2 class="row-title"><i class="fa-solid fa-chart-line"></i> Series del Momento</h2>
                 <div class="cards-grid" id="trendingSeries"></div>
             </div>
 
-            <!-- Películas Mejor Valoradas -->
             <div class="content-row">
-                <h2 class="row-title">
-                    <i class="fa-solid fa-star"></i> Mejor Valoradas
-                </h2>
+                <h2 class="row-title"><i class="fa-solid fa-star"></i> Mejor Valoradas</h2>
                 <div class="cards-grid" id="topRatedMovies"></div>
             </div>
 
-            <!-- Series Populares -->
             <div class="content-row">
-                <h2 class="row-title">
-                    <i class="fa-solid fa-bolt"></i> Series Populares
-                </h2>
+                <h2 class="row-title"><i class="fa-solid fa-bolt"></i> Series Populares</h2>
                 <div class="cards-grid" id="popularSeries"></div>
             </div>
         </div>
@@ -196,7 +183,21 @@
                     </iframe>
                 </div>
                 
-                <div class="player-info" id="playerInfo"></div>
+                <!-- TORRENTS -->
+                <div class="torrents-section" id="torrentsSection" style="display:none;">
+                    <h3><i class="fa-solid fa-magnet"></i> Torrents Disponibles</h3>
+                    <p class="torrents-info">
+                        <i class="fa-solid fa-circle-info"></i> 
+                        Buscando en: YTS, EZTV, RARBG, 1337x, ThePirateBay, KickassTorrents, TorrentGalaxy, MagnetDL, HorribleSubs, NyaaSi, TokyoTosho, AniDex, nekoBT y más...
+                    </p>
+                    <div class="torrents-list" id="torrentsList">
+                        <p style="text-align:center;padding:20px;color:#999;">Buscando torrents...</p>
+                    </div>
+                    <p class="torrents-footer">
+                        <i class="fa-solid fa-gear"></i> 
+                        Configura RealDebrid/Premiumize/AllDebrid en <a href="https://torrentio.strem.fun" target="_blank" rel="noopener noreferrer">torrentio.strem.fun</a>
+                    </p>
+                </div>
             </div>
         </div>
     </section>
@@ -206,7 +207,7 @@
 <!-- FOOTER -->
 <footer class="footer">
     <div class="container">
-        <p>🎬 CineStream - Datos proporcionados por <a href="https://www.themoviedb.org/" target="_blank">TMDB</a></p>
+        <p>🎬 CineStream - Datos proporcionados por <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">TMDB</a></p>
         <p class="disclaimer">Este sitio no almacena ningún contenido. Solo muestra información pública de TMDB.</p>
     </div>
 </footer>
