@@ -39,27 +39,44 @@ const state = {
 };
 
 // ============================================
+// VALIDACIÓN INICIAL
+// ============================================
+if (!API_KEY || API_KEY === "686e8f50b2135e3c32f670ec018df888" || API_KEY.trim() === "") {
+    console.error("❌ API Key no configurada");
+    alert("⚠️ Debes configurar tu API Key de TMDB en el archivo js/app.js\n\n1. Obtén una gratis en: https://www.themoviedb.org/settings/api\n2. Edita js/app.js y reemplaza 'TU_API_KEY_AQUI'");
+}
+
+// ============================================
 // UTILIDADES
 // ============================================
 function showLoading() {
-    document.getElementById('loading').classList.add('active');
+    const loading = document.getElementById('loading');
+    if (loading) loading.classList.add('active');
 }
 
 function hideLoading() {
-    document.getElementById('loading').classList.remove('active');
+    const loading = document.getElementById('loading');
+    if (loading) loading.classList.remove('active');
 }
 
 async function fetchTMDB(endpoint) {
+    if (!API_KEY || API_KEY === "686e8f50b2135e3c32f670ec018df888") {
+        throw new Error('API Key no configurada. Edita js/app.js');
+    }
+    
     const separator = endpoint.includes('?') ? '&' : '?';
     const url = `${BASE_URL}${endpoint}${separator}api_key=${API_KEY}&language=es-ES`;
     
     const response = await fetch(url);
-    if (!response.ok) throw new Error('Error al cargar datos');
+    if (!response.ok) {
+        if (response.status === 401) throw new Error('API Key inválida');
+        throw new Error(`Error ${response.status} al cargar datos`);
+    }
     return response.json();
 }
 
 function createCard(item, type) {
-    const title = item.title || item.name;
+    const title = item.title || item.name || 'Sin título';
     const date = item.release_date || item.first_air_date || '';
     const year = date.substring(0, 4);
     const rating = item.vote_average ? item.vote_average.toFixed(1) : 'N/A';
@@ -67,8 +84,11 @@ function createCard(item, type) {
         ? `${IMG_URL}${item.poster_path}` 
         : 'https://via.placeholder.com/500x750/1a1a1a/666?text=Sin+Poster';
 
+    // Usar hash para navegación (permite usar botón atrás del navegador)
+    const detailUrl = type === 'movie' ? `#/movie/${item.id}` : `#/tv/${item.id}`;
+
     return `
-        <div class="card" onclick="showDetail('${type}', ${item.id})">
+        <a href="${detailUrl}" class="card" style="text-decoration:none;color:inherit;">
             <img src="${poster}" alt="${title}" class="card-poster" loading="lazy">
             <div class="card-play"><i class="fa-solid fa-play"></i></div>
             <div class="card-info">
@@ -78,12 +98,13 @@ function createCard(item, type) {
                     <span class="card-rating">⭐ ${rating}</span>
                 </div>
             </div>
-        </div>
+        </a>
     `;
 }
 
 function renderCards(containerId, items, type) {
     const container = document.getElementById(containerId);
+    if (!container) return;
     container.innerHTML = items.map(item => createCard(item, type)).join('');
 }
 
@@ -94,8 +115,11 @@ function navigateTo(section) {
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
     
-    document.getElementById(section).classList.add('active');
-    document.querySelector(`[data-section="${section}"]`)?.classList.add('active');
+    const sectionEl = document.getElementById(section);
+    if (sectionEl) sectionEl.classList.add('active');
+    
+    const navLink = document.querySelector(`[data-section="${section}"]`);
+    if (navLink) navLink.classList.add('active');
     
     state.currentSection = section;
     window.scrollTo(0, 0);
@@ -123,9 +147,14 @@ function handleRoute() {
     } else if (parts[0] === 'tv' && parts[1]) {
         navigateTo('detail');
         showDetail('tv', parts[1]);
-    } else if (parts[0] === 'play') {
+    } else if (parts[0] === 'play' && parts[2]) {
+        // ✅ CORRECCIÓN: Llamar a loadPlayer, no a playContent
         navigateTo('player');
-        playContent(parts[1], parts[2], parts[3], parts[4]);
+        const type = parts[1];
+        const id = parts[2];
+        const season = parts[3] || 1;
+        const episode = parts[4] || 1;
+        loadPlayer(type, id, season, episode);
     } else {
         navigateTo('home');
     }
@@ -146,25 +175,39 @@ async function loadHome() {
         ]);
 
         // Hero banner con contenido trending
-        const hero = trending.results[0];
-        const heroType = hero.media_type === 'movie' ? 'movie' : 'tv';
-        
-        document.getElementById('hero').style.backgroundImage = 
-            `url(${BACKDROP_URL}${hero.backdrop_path})`;
-        document.getElementById('heroTitle').textContent = hero.title || hero.name;
-        document.getElementById('heroDesc').textContent = hero.overview;
-        
-        document.getElementById('heroPlay').onclick = () => {
-            if (heroType === 'movie') {
-                playContent('movie', hero.id);
-            } else {
-                playContent('tv', hero.id, 1, 1);
+        if (trending.results && trending.results.length > 0) {
+            const hero = trending.results[0];
+            const heroType = hero.media_type === 'movie' ? 'movie' : 'tv';
+            
+            const heroEl = document.getElementById('hero');
+            if (hero.backdrop_path && heroEl) {
+                heroEl.style.backgroundImage = `url(${BACKDROP_URL}${hero.backdrop_path})`;
             }
-        };
-        
-        document.getElementById('heroInfo').onclick = () => {
-            window.location.hash = `#/${heroType}/${hero.id}`;
-        };
+            
+            const heroTitle = document.getElementById('heroTitle');
+            if (heroTitle) heroTitle.textContent = hero.title || hero.name;
+            
+            const heroDesc = document.getElementById('heroDesc');
+            if (heroDesc) heroDesc.textContent = hero.overview || '';
+            
+            const heroPlay = document.getElementById('heroPlay');
+            if (heroPlay) {
+                heroPlay.onclick = () => {
+                    if (heroType === 'movie') {
+                        window.location.hash = `#/play/movie/${hero.id}/1/1`;
+                    } else {
+                        window.location.hash = `#/play/tv/${hero.id}/1/1`;
+                    }
+                };
+            }
+            
+            const heroInfo = document.getElementById('heroInfo');
+            if (heroInfo) {
+                heroInfo.onclick = () => {
+                    window.location.hash = `#/${heroType}/${hero.id}`;
+                };
+            }
+        }
 
         renderCards('popularMovies', popularMovies.results.slice(0, 12), 'movie');
         renderCards('trendingSeries', popularSeries.results.slice(0, 12), 'tv');
@@ -173,7 +216,7 @@ async function loadHome() {
         
     } catch (error) {
         console.error('Error:', error);
-        alert('Error al cargar la página. Verifica tu API Key.');
+        alert('Error al cargar la página: ' + error.message);
     } finally {
         hideLoading();
     }
@@ -190,11 +233,16 @@ async function loadMovies() {
         
         const data = await fetchTMDB(endpoint);
         renderCards('moviesGrid', data.results, 'movie');
-        document.getElementById('moviePage').textContent = `Página ${state.moviePage}`;
-        document.getElementById('prevMovies').disabled = state.moviePage === 1;
+        
+        const pageEl = document.getElementById('moviePage');
+        if (pageEl) pageEl.textContent = `Página ${state.moviePage}`;
+        
+        const prevBtn = document.getElementById('prevMovies');
+        if (prevBtn) prevBtn.disabled = state.moviePage === 1;
         
     } catch (error) {
         console.error(error);
+        alert('Error al cargar películas: ' + error.message);
     } finally {
         hideLoading();
     }
@@ -211,11 +259,16 @@ async function loadSeries() {
         
         const data = await fetchTMDB(endpoint);
         renderCards('seriesGrid', data.results, 'tv');
-        document.getElementById('seriesPage').textContent = `Página ${state.seriesPage}`;
-        document.getElementById('prevSeries').disabled = state.seriesPage === 1;
+        
+        const pageEl = document.getElementById('seriesPage');
+        if (pageEl) pageEl.textContent = `Página ${state.seriesPage}`;
+        
+        const prevBtn = document.getElementById('prevSeries');
+        if (prevBtn) prevBtn.disabled = state.seriesPage === 1;
         
     } catch (error) {
         console.error(error);
+        alert('Error al cargar series: ' + error.message);
     } finally {
         hideLoading();
     }
@@ -233,6 +286,8 @@ async function searchContent(query) {
         const results = data.results.filter(i => i.media_type === 'movie' || i.media_type === 'tv');
         
         const container = document.getElementById('searchResults');
+        if (!container) return;
+        
         if (results.length === 0) {
             container.innerHTML = '<p style="text-align:center;grid-column:1/-1;padding:40px;color:#999;">No se encontraron resultados</p>';
         } else {
@@ -281,7 +336,7 @@ async function showDetail(type, id) {
                         <button class="btn btn-primary" onclick="playDetail()">
                             <i class="fa-solid fa-play"></i> Reproducir
                         </button>
-                        <a href="https://www.themoviedb.org/${type}/${id}" target="_blank" class="btn btn-secondary">
+                        <a href="https://www.themoviedb.org/${type}/${id}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
                             <i class="fa-solid fa-external-link"></i> Ver en TMDB
                         </a>
                     </div>
@@ -308,7 +363,8 @@ async function showDetail(type, id) {
             `;
         }
         
-        document.getElementById('detailContent').innerHTML = html;
+        const detailContent = document.getElementById('detailContent');
+        if (detailContent) detailContent.innerHTML = html;
         
         if (type === 'tv') {
             loadEpisodes(id, 1);
@@ -316,7 +372,7 @@ async function showDetail(type, id) {
         
     } catch (error) {
         console.error(error);
-        alert('Error al cargar detalles');
+        alert('Error al cargar detalles: ' + error.message);
     } finally {
         hideLoading();
     }
@@ -333,6 +389,7 @@ async function loadEpisodes(tvId, season, tabElement) {
         
         const data = await fetchTMDB(`/tv/${tvId}/season/${season}`);
         const container = document.getElementById('episodesList');
+        if (!container) return;
         
         container.innerHTML = data.episodes.map(ep => {
             const thumb = ep.still_path ? `${IMG_URL}${ep.still_path}` : 'https://via.placeholder.com/320x180/1a1a1a/666?text=Sin+Imagen';
@@ -340,10 +397,10 @@ async function loadEpisodes(tvId, season, tabElement) {
                 <div class="episode-card">
                     <img src="${thumb}" alt="Ep ${ep.episode_number}" class="episode-thumb">
                     <div class="episode-info">
-                        <h4>E${ep.episode_number}: ${ep.name}</h4>
+                        <h4>E${ep.episode_number}: ${ep.name || 'Sin título'}</h4>
                         <p>${ep.overview || 'Sin descripción'}</p>
                     </div>
-                    <button class="btn btn-primary" onclick="playContent('tv', ${tvId}, ${season}, ${ep.episode_number})">
+                    <button class="btn btn-primary" onclick="window.location.hash='#/play/tv/${tvId}/${season}/${ep.episode_number}'">
                         <i class="fa-solid fa-play"></i> Ver
                     </button>
                 </div>
@@ -357,8 +414,10 @@ async function loadEpisodes(tvId, season, tabElement) {
 
 function playDetail() {
     const { type, data } = state.currentDetail;
+    if (!data) return;
+    
     if (type === 'movie') {
-        window.location.hash = `#/play/movie/${data.id}`;
+        window.location.hash = `#/play/movie/${data.id}/1/1`;
     } else {
         window.location.hash = `#/play/tv/${data.id}/1/1`;
     }
@@ -367,13 +426,24 @@ function playDetail() {
 // ============================================
 // REPRODUCTOR
 // ============================================
-function playContent(type, id, season = 1, episode = 1) {
-    window.location.hash = `#/play/${type}/${id}/${season}/${episode}`;
-}
-
 function loadPlayer(type, id, season, episode) {
     const servers = Object.keys(VIDEO_SERVERS);
     const controls = document.getElementById('playerControls');
+    const playerTitle = document.getElementById('playerTitle');
+    
+    if (!controls) return;
+    
+    // Cargar título
+    fetchTMDB(`/${type}/${id}`).then(data => {
+        if (playerTitle) {
+            const title = data.title || data.name;
+            if (type === 'tv') {
+                playerTitle.textContent = `${title} - T${season} E${episode}`;
+            } else {
+                playerTitle.textContent = title;
+            }
+        }
+    }).catch(err => console.error(err));
     
     controls.innerHTML = `
         <span style="color:#999;margin-right:10px;">Servidores:</span>
@@ -389,7 +459,8 @@ function loadPlayer(type, id, season, episode) {
 
 function changeServer(server, type, id, season, episode, btnElement) {
     const url = VIDEO_SERVERS[server](type, id, season, episode);
-    document.getElementById('videoPlayer').src = url;
+    const player = document.getElementById('videoPlayer');
+    if (player) player.src = url;
     
     if (btnElement) {
         document.querySelectorAll('.server-btn').forEach(b => b.classList.remove('active'));
@@ -410,13 +481,17 @@ async function loadGenres() {
         const movieSelect = document.getElementById('movieGenre');
         const seriesSelect = document.getElementById('seriesGenre');
         
-        movieGenres.genres.forEach(g => {
-            movieSelect.innerHTML += `<option value="${g.id}">${g.name}</option>`;
-        });
+        if (movieSelect) {
+            movieGenres.genres.forEach(g => {
+                movieSelect.innerHTML += `<option value="${g.id}">${g.name}</option>`;
+            });
+        }
         
-        tvGenres.genres.forEach(g => {
-            seriesSelect.innerHTML += `<option value="${g.id}">${g.name}</option>`;
-        });
+        if (seriesSelect) {
+            tvGenres.genres.forEach(g => {
+                seriesSelect.innerHTML += `<option value="${g.id}">${g.name}</option>`;
+            });
+        }
         
     } catch (error) {
         console.error(error);
@@ -428,68 +503,101 @@ async function loadGenres() {
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
     // Búsqueda
-    document.getElementById('searchBtn').addEventListener('click', () => {
-        const query = document.getElementById('searchInput').value.trim();
-        if (query) {
-            window.location.hash = `#/search/${encodeURIComponent(query)}`;
-        }
-    });
+    const searchBtn = document.getElementById('searchBtn');
+    const searchInput = document.getElementById('searchInput');
     
-    document.getElementById('searchInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            document.getElementById('searchBtn').click();
-        }
-    });
+    if (searchBtn) {
+        searchBtn.addEventListener('click', () => {
+            const query = searchInput ? searchInput.value.trim() : '';
+            if (query) {
+                window.location.hash = `#/search/${encodeURIComponent(query)}`;
+            }
+        });
+    }
+    
+    if (searchInput) {
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && searchBtn) {
+                searchBtn.click();
+            }
+        });
+    }
     
     // Filtros películas
-    document.getElementById('movieGenre').addEventListener('change', (e) => {
-        state.movieGenre = e.target.value;
-        state.moviePage = 1;
-        loadMovies();
-    });
+    const movieGenre = document.getElementById('movieGenre');
+    const movieSort = document.getElementById('movieSort');
+    const prevMovies = document.getElementById('prevMovies');
+    const nextMovies = document.getElementById('nextMovies');
     
-    document.getElementById('movieSort').addEventListener('change', (e) => {
-        state.movieSort = e.target.value;
-        state.moviePage = 1;
-        loadMovies();
-    });
-    
-    document.getElementById('prevMovies').addEventListener('click', () => {
-        if (state.moviePage > 1) {
-            state.moviePage--;
+    if (movieGenre) {
+        movieGenre.addEventListener('change', (e) => {
+            state.movieGenre = e.target.value;
+            state.moviePage = 1;
             loadMovies();
-        }
-    });
+        });
+    }
     
-    document.getElementById('nextMovies').addEventListener('click', () => {
-        state.moviePage++;
-        loadMovies();
-    });
+    if (movieSort) {
+        movieSort.addEventListener('change', (e) => {
+            state.movieSort = e.target.value;
+            state.moviePage = 1;
+            loadMovies();
+        });
+    }
+    
+    if (prevMovies) {
+        prevMovies.addEventListener('click', () => {
+            if (state.moviePage > 1) {
+                state.moviePage--;
+                loadMovies();
+            }
+        });
+    }
+    
+    if (nextMovies) {
+        nextMovies.addEventListener('click', () => {
+            state.moviePage++;
+            loadMovies();
+        });
+    }
     
     // Filtros series
-    document.getElementById('seriesGenre').addEventListener('change', (e) => {
-        state.seriesGenre = e.target.value;
-        state.seriesPage = 1;
-        loadSeries();
-    });
+    const seriesGenre = document.getElementById('seriesGenre');
+    const seriesSort = document.getElementById('seriesSort');
+    const prevSeries = document.getElementById('prevSeries');
+    const nextSeries = document.getElementById('nextSeries');
     
-    document.getElementById('seriesSort').addEventListener('change', (e) => {
-        state.seriesSort = e.target.value;
-        state.seriesPage = 1;
-        loadSeries();
-    });
-    
-    document.getElementById('prevSeries').addEventListener('click', () => {
-        if (state.seriesPage > 1) {
-            state.seriesPage--;
+    if (seriesGenre) {
+        seriesGenre.addEventListener('change', (e) => {
+            state.seriesGenre = e.target.value;
+            state.seriesPage = 1;
             loadSeries();
-        }
-    });
+        });
+    }
     
-    document.getElementById('nextSeries').addEventListener('click', () => {
-        state.seriesPage++;
-        loadSeries();
-    });
+    if (seriesSort) {
+        seriesSort.addEventListener('change', (e) => {
+            state.seriesSort = e.target.value;
+            state.seriesPage = 1;
+            loadSeries();
+        });
+    }
+    
+    if (prevSeries) {
+        prevSeries.addEventListener('click', () => {
+            if (state.seriesPage > 1) {
+                state.seriesPage--;
+                loadSeries();
+            }
+        });
+    }
+    
+    if (nextSeries) {
+        nextSeries.addEventListener('click', () => {
+            state.seriesPage++;
+            loadSeries();
+        });
+    }
     
     // Router
     window.addEventListener('hashchange', handleRoute);
@@ -499,3 +607,5 @@ document.addEventListener('DOMContentLoaded', () => {
     loadHome();
     handleRoute();
 });
+
+console.log('✅ CineStream cargado correctamente');
