@@ -1,24 +1,38 @@
 // ============================================
 // CONFIGURACIÓN
 // ============================================
-const API_KEY = "686e8f50b2135e3c32f670ec018df888"; // Tu API Key de TMDB
+// ⚠️ IMPORTANTE: Reemplaza con tu API Key real de TMDB
+// Obtén una gratis en: https://www.themoviedb.org/settings/api
+const API_KEY = "686e8f50b2135e3c32f670ec018df888"; // ← CAMBIA ESTO
 const BASE_URL = "https://api.themoviedb.org/3";
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
 const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
 
-// Servidores de video embebido
+// Servidores de video embebido (con alternativas por si uno falla)
 const VIDEO_SERVERS = {
-    vidsrc: (type, id, season, episode) => {
+    "VidSrc PRO": (type, id, season, episode) => {
+        if (type === 'movie') return `https://vidsrc.pro/embed/movie/${id}`;
+        return `https://vidsrc.pro/embed/tv/${id}/${season}/${episode}`;
+    },
+    "VidSrc XYZ": (type, id, season, episode) => {
         if (type === 'movie') return `https://vidsrc.xyz/embed/movie/${id}`;
         return `https://vidsrc.xyz/embed/tv/${id}/${season}/${episode}`;
     },
-    embedsu: (type, id, season, episode) => {
+    "Embed SU": (type, id, season, episode) => {
         if (type === 'movie') return `https://embed.su/embed/movie/${id}`;
         return `https://embed.su/embed/tv/${id}/${season}/${episode}`;
     },
-    multiembed: (type, id, season, episode) => {
+    "MultiEmbed": (type, id, season, episode) => {
         if (type === 'movie') return `https://multiembed.mov/?video_id=${id}&tmdb=1`;
         return `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${season}&e=${episode}`;
+    },
+    "2Embed": (type, id, season, episode) => {
+        if (type === 'movie') return `https://www.2embed.cc/embed/${id}`;
+        return `https://www.2embed.cc/embedtv/${id}&s=${season}&e=${episode}`;
+    },
+    "VidLink": (type, id, season, episode) => {
+        if (type === 'movie') return `https://vidlink.pro/movie/${id}`;
+        return `https://vidlink.pro/tv/${id}/${season}/${episode}`;
     }
 };
 
@@ -41,9 +55,26 @@ const state = {
 // ============================================
 // VALIDACIÓN INICIAL
 // ============================================
-if (!API_KEY || API_KEY.trim() === "") {
-    console.error("❌ API Key no configurada");
-    alert("⚠️ Debes configurar tu API Key de TMDB en el archivo js/app.js");
+function isValidApiKey(key) {
+    // Una API Key de TMDB tiene 32 caracteres alfanuméricos
+    return key && key.length === 32 && /^[a-f0-9]+$/i.test(key);
+}
+
+if (!isValidApiKey(API_KEY)) {
+    console.error("❌ API Key inválida:", API_KEY);
+    console.error("📝 Debe ser una cadena de 32 caracteres alfanuméricos");
+    console.error("🔗 Obtén una gratis en: https://www.themoviedb.org/settings/api");
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        alert(
+            "⚠️ API Key de TMDB no configurada o inválida\n\n" +
+            "1. Ve a: https://www.themoviedb.org/settings/api\n" +
+            "2. Copia tu 'API Key (v3 auth)'\n" +
+            "3. Edita js/app.js línea 5\n" +
+            "4. Reemplaza 'TU_API_KEY_REAL_AQUI' con tu clave\n\n" +
+            "La clave debe tener 32 caracteres (ej: 686e8f50b2135e3c32f670ec018df888)"
+        );
+    });
 }
 
 // ============================================
@@ -60,19 +91,33 @@ function hideLoading() {
 }
 
 async function fetchTMDB(endpoint) {
-    if (!API_KEY || API_KEY.trim() === "") {
-        throw new Error('API Key no configurada');
+    if (!isValidApiKey(API_KEY)) {
+        throw new Error('API Key inválida. Edita js/app.js y configura tu clave real de TMDB');
     }
     
     const separator = endpoint.includes('?') ? '&' : '?';
     const url = `${BASE_URL}${endpoint}${separator}api_key=${API_KEY}&language=es-ES`;
     
-    const response = await fetch(url);
-    if (!response.ok) {
-        if (response.status === 401) throw new Error('API Key inválida');
-        throw new Error(`Error ${response.status} al cargar datos`);
+    try {
+        const response = await fetch(url);
+        
+        if (response.status === 401) {
+            throw new Error('API Key inválida (401). Verifica tu clave en TMDB');
+        }
+        if (response.status === 429) {
+            throw new Error('Demasiadas peticiones. Espera un momento e intenta de nuevo');
+        }
+        if (!response.ok) {
+            throw new Error(`Error ${response.status} al cargar datos`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        if (error.message.includes('Failed to fetch')) {
+            throw new Error('Error de conexión. Verifica tu internet');
+        }
+        throw error;
     }
-    return response.json();
 }
 
 function createCard(item, type) {
@@ -88,7 +133,8 @@ function createCard(item, type) {
 
     return `
         <a href="${detailUrl}" class="card" style="text-decoration:none;color:inherit;">
-            <img src="${poster}" alt="${title}" class="card-poster" loading="lazy">
+            <img src="${poster}" alt="${title}" class="card-poster" loading="lazy" 
+                 onerror="this.src='https://via.placeholder.com/500x750/1a1a1a/666?text=Sin+Poster'">
             <div class="card-play"><i class="fa-solid fa-play"></i></div>
             <div class="card-info">
                 <div class="card-title">${title}</div>
@@ -104,6 +150,12 @@ function createCard(item, type) {
 function renderCards(containerId, items, type) {
     const container = document.getElementById(containerId);
     if (!container) return;
+    
+    if (!items || items.length === 0) {
+        container.innerHTML = '<p style="grid-column:1/-1;text-align:center;padding:40px;color:#999;">No hay contenido disponible</p>';
+        return;
+    }
+    
     container.innerHTML = items.map(item => createCard(item, type)).join('');
 }
 
@@ -295,6 +347,7 @@ async function searchContent(query) {
         
     } catch (error) {
         console.error(error);
+        alert('Error en la búsqueda: ' + error.message);
     } finally {
         hideLoading();
     }
@@ -317,7 +370,8 @@ async function showDetail(type, id) {
         
         let html = `
             <div class="detail-hero">
-                <img src="${poster}" alt="${title}" class="detail-poster">
+                <img src="${poster}" alt="${title}" class="detail-poster"
+                     onerror="this.src='https://via.placeholder.com/500x750/1a1a1a/666?text=Sin+Poster'">
                 <div class="detail-info">
                     <h1>${title}</h1>
                     <div class="detail-meta">
@@ -391,7 +445,8 @@ async function loadEpisodes(tvId, season, tabElement) {
             const thumb = ep.still_path ? `${IMG_URL}${ep.still_path}` : 'https://via.placeholder.com/320x180/1a1a1a/666?text=Sin+Imagen';
             return `
                 <div class="episode-card">
-                    <img src="${thumb}" alt="Ep ${ep.episode_number}" class="episode-thumb">
+                    <img src="${thumb}" alt="Ep ${ep.episode_number}" class="episode-thumb"
+                         onerror="this.src='https://via.placeholder.com/320x180/1a1a1a/666?text=Sin+Imagen'">
                     <div class="episode-info">
                         <h4>E${ep.episode_number}: ${ep.name || 'Sin título'}</h4>
                         <p>${ep.overview || 'Sin descripción'}</p>
@@ -405,6 +460,7 @@ async function loadEpisodes(tvId, season, tabElement) {
         
     } catch (error) {
         console.error(error);
+        alert('Error al cargar episodios: ' + error.message);
     }
 }
 
@@ -429,6 +485,7 @@ function loadPlayer(type, id, season, episode) {
     
     if (!controls) return;
     
+    // Cargar título
     fetchTMDB(`/${type}/${id}`).then(data => {
         if (playerTitle) {
             const title = data.title || data.name;
@@ -438,17 +495,20 @@ function loadPlayer(type, id, season, episode) {
                 playerTitle.textContent = title;
             }
         }
-    }).catch(err => console.error(err));
+    }).catch(err => console.error('Error cargando título:', err));
     
+    // Crear botones de servidores
     controls.innerHTML = `
         <span style="color:#999;margin-right:10px;">Servidores:</span>
         ${servers.map((s, i) => `
-            <button class="server-btn ${i === 0 ? 'active' : ''}" onclick="changeServer('${s}', '${type}', ${id}, ${season}, ${episode}, this)">
-                ${s.charAt(0).toUpperCase() + s.slice(1)}
+            <button class="server-btn ${i === 0 ? 'active' : ''}" 
+                    onclick="changeServer('${s}', '${type}', ${id}, ${season}, ${episode}, this)">
+                ${s}
             </button>
         `).join('')}
     `;
     
+    // Cargar el primer servidor
     changeServer(servers[0], type, id, season, episode);
 }
 
@@ -489,7 +549,7 @@ async function loadGenres() {
         }
         
     } catch (error) {
-        console.error(error);
+        console.error('Error cargando géneros:', error);
     }
 }
 
@@ -517,6 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    // Filtros películas
     const movieGenre = document.getElementById('movieGenre');
     const movieSort = document.getElementById('movieSort');
     const prevMovies = document.getElementById('prevMovies');
@@ -554,6 +615,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    // Filtros series
     const seriesGenre = document.getElementById('seriesGenre');
     const seriesSort = document.getElementById('seriesSort');
     const prevSeries = document.getElementById('prevSeries');
@@ -591,11 +653,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+    // Router
     window.addEventListener('hashchange', handleRoute);
     
+    // Inicializar
     loadGenres();
     loadHome();
     handleRoute();
 });
 
 console.log('✅ CineStream cargado correctamente');
+console.log('📝 Servidores disponibles:', Object.keys(VIDEO_SERVERS).join(', '));
