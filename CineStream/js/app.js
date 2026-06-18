@@ -1,12 +1,12 @@
 // ============================================
 // CONFIGURACIÓN
 // ============================================
-const API_KEY = "686e8f50b2135e3c32f670ec018df888"; // ⚠️ REEMPLAZA CON TU API KEY DE TMDB
+const API_KEY = "686e8f50b2135e3c32f670ec018df888"; // Tu API Key de TMDB
 const BASE_URL = "https://api.themoviedb.org/3";
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
 const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
 
-// Servidores de video embebido (múltiples opciones por si uno falla)
+// Servidores de video embebido
 const VIDEO_SERVERS = {
     vidsrc: (type, id, season, episode) => {
         if (type === 'movie') return `https://vidsrc.xyz/embed/movie/${id}`;
@@ -41,9 +41,9 @@ const state = {
 // ============================================
 // VALIDACIÓN INICIAL
 // ============================================
-if (!API_KEY || API_KEY === "686e8f50b2135e3c32f670ec018df888" || API_KEY.trim() === "") {
+if (!API_KEY || API_KEY.trim() === "") {
     console.error("❌ API Key no configurada");
-    alert("⚠️ Debes configurar tu API Key de TMDB en el archivo js/app.js\n\n1. Obtén una gratis en: https://www.themoviedb.org/settings/api\n2. Edita js/app.js y reemplaza 'TU_API_KEY_AQUI'");
+    alert("⚠️ Debes configurar tu API Key de TMDB en el archivo js/app.js");
 }
 
 // ============================================
@@ -60,8 +60,8 @@ function hideLoading() {
 }
 
 async function fetchTMDB(endpoint) {
-    if (!API_KEY || API_KEY === "686e8f50b2135e3c32f670ec018df888") {
-        throw new Error('API Key no configurada. Edita js/app.js');
+    if (!API_KEY || API_KEY.trim() === "") {
+        throw new Error('API Key no configurada');
     }
     
     const separator = endpoint.includes('?') ? '&' : '?';
@@ -84,7 +84,6 @@ function createCard(item, type) {
         ? `${IMG_URL}${item.poster_path}` 
         : 'https://via.placeholder.com/500x750/1a1a1a/666?text=Sin+Poster';
 
-    // Usar hash para navegación (permite usar botón atrás del navegador)
     const detailUrl = type === 'movie' ? `#/movie/${item.id}` : `#/tv/${item.id}`;
 
     return `
@@ -148,7 +147,6 @@ function handleRoute() {
         navigateTo('detail');
         showDetail('tv', parts[1]);
     } else if (parts[0] === 'play' && parts[2]) {
-        // ✅ CORRECCIÓN: Llamar a loadPlayer, no a playContent
         navigateTo('player');
         const type = parts[1];
         const id = parts[2];
@@ -174,7 +172,6 @@ async function loadHome() {
             fetchTMDB('/tv/popular')
         ]);
 
-        // Hero banner con contenido trending
         if (trending.results && trending.results.length > 0) {
             const hero = trending.results[0];
             const heroType = hero.media_type === 'movie' ? 'movie' : 'tv';
@@ -344,7 +341,6 @@ async function showDetail(type, id) {
             </div>
         `;
         
-        // Si es serie, mostrar temporadas y episodios
         if (type === 'tv' && data.seasons) {
             const validSeasons = data.seasons.filter(s => s.season_number > 0);
             html += `
@@ -433,7 +429,6 @@ function loadPlayer(type, id, season, episode) {
     
     if (!controls) return;
     
-    // Cargar título
     fetchTMDB(`/${type}/${id}`).then(data => {
         if (playerTitle) {
             const title = data.title || data.name;
@@ -502,7 +497,6 @@ async function loadGenres() {
 // EVENT LISTENERS
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-    // Búsqueda
     const searchBtn = document.getElementById('searchBtn');
     const searchInput = document.getElementById('searchInput');
     
@@ -523,7 +517,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Filtros películas
     const movieGenre = document.getElementById('movieGenre');
     const movieSort = document.getElementById('movieSort');
     const prevMovies = document.getElementById('prevMovies');
@@ -561,7 +554,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Filtros series
     const seriesGenre = document.getElementById('seriesGenre');
     const seriesSort = document.getElementById('seriesSort');
     const prevSeries = document.getElementById('prevSeries');
@@ -599,10 +591,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Router
     window.addEventListener('hashchange', handleRoute);
     
-    // Inicializar
     loadGenres();
     loadHome();
     handleRoute();
