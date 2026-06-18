@@ -1,14 +1,13 @@
 // ============================================
 // CONFIGURACIÓN
 // ============================================
-// ⚠️ IMPORTANTE: Reemplaza con tu API Key real de TMDB
-// Obtén una gratis en: https://www.themoviedb.org/settings/api
-const API_KEY = "686e8f50b2135e3c32f670ec018df888"; // ← CAMBIA ESTO
+const API_KEY = "686e8f50b2135e3c32f670ec018df888"; // ⚠️ REEMPLAZA CON TU API KEY DE TMDB
 const BASE_URL = "https://api.themoviedb.org/3";
 const IMG_URL = "https://image.tmdb.org/t/p/w500";
 const BACKDROP_URL = "https://image.tmdb.org/t/p/original";
+const TORRENTIO_URL = "https://torrentio.strem.fun";
 
-// Servidores de video embebido (con alternativas por si uno falla)
+// Servidores de video embebido
 const VIDEO_SERVERS = {
     "VidSrc PRO": (type, id, season, episode) => {
         if (type === 'movie') return `https://vidsrc.pro/embed/movie/${id}`;
@@ -18,6 +17,10 @@ const VIDEO_SERVERS = {
         if (type === 'movie') return `https://vidsrc.xyz/embed/movie/${id}`;
         return `https://vidsrc.xyz/embed/tv/${id}/${season}/${episode}`;
     },
+    "VidSrc RU": (type, id, season, episode) => {
+        if (type === 'movie') return `https://vidsrc-embed.ru/embed/movie/${id}`;
+        return `https://vidsrc-embed.ru/embed/tv/${id}/${season}-${episode}`;
+    },
     "Embed SU": (type, id, season, episode) => {
         if (type === 'movie') return `https://embed.su/embed/movie/${id}`;
         return `https://embed.su/embed/tv/${id}/${season}/${episode}`;
@@ -25,6 +28,10 @@ const VIDEO_SERVERS = {
     "MultiEmbed": (type, id, season, episode) => {
         if (type === 'movie') return `https://multiembed.mov/?video_id=${id}&tmdb=1`;
         return `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${season}&e=${episode}`;
+    },
+    "AutoEmbed": (type, id, season, episode) => {
+        if (type === 'movie') return `https://autoembed.co/movie/tmdb/${id}`;
+        return `https://autoembed.co/tv/tmdb/${id}-${season}-${episode}`;
     },
     "2Embed": (type, id, season, episode) => {
         if (type === 'movie') return `https://www.2embed.cc/embed/${id}`;
@@ -49,30 +56,26 @@ const state = {
     seriesSort: 'popularity.desc',
     currentDetail: null,
     currentSeason: 1,
-    currentEpisode: 1
+    currentEpisode: 1,
+    torrents: []
 };
 
 // ============================================
 // VALIDACIÓN INICIAL
 // ============================================
 function isValidApiKey(key) {
-    // Una API Key de TMDB tiene 32 caracteres alfanuméricos
     return key && key.length === 32 && /^[a-f0-9]+$/i.test(key);
 }
 
 if (!isValidApiKey(API_KEY)) {
     console.error("❌ API Key inválida:", API_KEY);
-    console.error("📝 Debe ser una cadena de 32 caracteres alfanuméricos");
-    console.error("🔗 Obtén una gratis en: https://www.themoviedb.org/settings/api");
-    
     document.addEventListener('DOMContentLoaded', () => {
         alert(
             "⚠️ API Key de TMDB no configurada o inválida\n\n" +
             "1. Ve a: https://www.themoviedb.org/settings/api\n" +
             "2. Copia tu 'API Key (v3 auth)'\n" +
             "3. Edita js/app.js línea 5\n" +
-            "4. Reemplaza 'TU_API_KEY_REAL_AQUI' con tu clave\n\n" +
-            "La clave debe tener 32 caracteres (ej: 686e8f50b2135e3c32f670ec018df888)"
+            "4. Reemplaza 'TU_API_KEY_REAL_AQUI' con tu clave"
         );
     });
 }
@@ -92,7 +95,7 @@ function hideLoading() {
 
 async function fetchTMDB(endpoint) {
     if (!isValidApiKey(API_KEY)) {
-        throw new Error('API Key inválida. Edita js/app.js y configura tu clave real de TMDB');
+        throw new Error('API Key inválida');
     }
     
     const separator = endpoint.includes('?') ? '&' : '?';
@@ -101,20 +104,14 @@ async function fetchTMDB(endpoint) {
     try {
         const response = await fetch(url);
         
-        if (response.status === 401) {
-            throw new Error('API Key inválida (401). Verifica tu clave en TMDB');
-        }
-        if (response.status === 429) {
-            throw new Error('Demasiadas peticiones. Espera un momento e intenta de nuevo');
-        }
-        if (!response.ok) {
-            throw new Error(`Error ${response.status} al cargar datos`);
-        }
+        if (response.status === 401) throw new Error('API Key inválida');
+        if (response.status === 429) throw new Error('Demasiadas peticiones');
+        if (!response.ok) throw new Error(`Error ${response.status}`);
         
         return await response.json();
     } catch (error) {
         if (error.message.includes('Failed to fetch')) {
-            throw new Error('Error de conexión. Verifica tu internet');
+            throw new Error('Error de conexión');
         }
         throw error;
     }
@@ -157,6 +154,123 @@ function renderCards(containerId, items, type) {
     }
     
     container.innerHTML = items.map(item => createCard(item, type)).join('');
+}
+
+// ============================================
+// BÚSQUEDA DE TORRENTS (Torrentio)
+// ============================================
+async function searchTorrents(type, tmdbId, season, episode) {
+    try {
+        let stremId;
+        if (type === 'movie') {
+            stremId = `movie/${tmdbId}`;
+        } else {
+            stremId = `series/${tmdbId}/${season}/${episode}`;
+        }
+
+        const url = `${TORRENTIO_URL}/stream/${stremId}.json`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error('Error al buscar torrents');
+        }
+
+        const data = await response.json();
+        
+        const torrents = (data.streams || []).map(stream => {
+            const titleParts = stream.title.split('\n');
+            const name = titleParts[0] || 'Torrent';
+            
+            const info = stream.title.toLowerCase();
+            const sizeMatch = info.match(/💾 ([\d.]+ [MG]B)/i) || info.match(/([\d.]+ [MG]B)/i);
+            const seedsMatch = info.match(/👤 (\d+)/i) || info.match(/seeds?:?\s*(\d+)/i);
+            const providerMatch = stream.title.match(/\[(.+?)\]/);
+            
+            return {
+                name: name,
+                fullTitle: stream.title,
+                infoHash: stream.infoHash,
+                magnet: stream.infoHash ? `magnet:?xt=urn:btih:${stream.infoHash}&dn=${encodeURIComponent(name)}` : null,
+                size: sizeMatch ? sizeMatch[1] : 'N/A',
+                seeds: seedsMatch ? seedsMatch[1] : '?',
+                provider: providerMatch ? providerMatch[1] : 'Desconocido',
+                quality: detectQuality(name)
+            };
+        }).filter(t => t.magnet);
+
+        torrents.sort((a, b) => parseInt(b.seeds) - parseInt(a.seeds));
+
+        return torrents;
+
+    } catch (error) {
+        console.error('Error buscando torrents:', error);
+        return [];
+    }
+}
+
+function detectQuality(name) {
+    const lower = name.toLowerCase();
+    if (lower.includes('2160p') || lower.includes('4k')) return '4K';
+    if (lower.includes('1080p')) return '1080p';
+    if (lower.includes('720p')) return '720p';
+    if (lower.includes('480p')) return '480p';
+    return 'SD';
+}
+
+function renderTorrents(torrents) {
+    const container = document.getElementById('torrentsList');
+    if (!container) return;
+
+    if (torrents.length === 0) {
+        container.innerHTML = '<p style="text-align:center;padding:20px;color:#999;">😕 No se encontraron torrents</p>';
+        return;
+    }
+
+    container.innerHTML = torrents.map((t, index) => `
+        <div class="torrent-item">
+            <div class="torrent-info">
+                <h4>${escapeHtml(t.name)}</h4>
+                <div class="torrent-meta">
+                    <span class="seeds"><i class="fa-solid fa-arrow-up"></i> ${t.seeds}</span>
+                    <span class="size"><i class="fa-solid fa-database"></i> ${t.size}</span>
+                    <span class="provider"><i class="fa-solid fa-server"></i> ${escapeHtml(t.provider)}</span>
+                    <span class="quality"><i class="fa-solid fa-film"></i> ${t.quality}</span>
+                </div>
+            </div>
+            <div class="torrent-actions">
+                <a href="${t.magnet}" class="btn-magnet" title="Abrir con cliente torrent">
+                    <i class="fa-solid fa-magnet"></i> Magnet
+                </a>
+                <button class="btn-copy-magnet" onclick="copyMagnet(${index})" title="Copiar enlace">
+                    <i class="fa-solid fa-copy"></i> Copiar
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function copyMagnet(index) {
+    const torrent = state.torrents[index];
+    if (!torrent || !torrent.magnet) return;
+
+    navigator.clipboard.writeText(torrent.magnet).then(() => {
+        const buttons = document.querySelectorAll('.btn-copy-magnet');
+        const btn = buttons[index];
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> ¡Copiado!';
+        btn.style.background = '#28a745';
+        
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            btn.style.background = '';
+        }, 2000);
+    });
 }
 
 // ============================================
@@ -476,17 +590,19 @@ function playDetail() {
 }
 
 // ============================================
-// REPRODUCTOR
+// REPRODUCTOR + TORRENTS
 // ============================================
-function loadPlayer(type, id, season, episode) {
+async function loadPlayer(type, id, season, episode) {
     const servers = Object.keys(VIDEO_SERVERS);
     const controls = document.getElementById('playerControls');
     const playerTitle = document.getElementById('playerTitle');
+    const torrentsSection = document.getElementById('torrentsSection');
     
     if (!controls) return;
     
     // Cargar título
-    fetchTMDB(`/${type}/${id}`).then(data => {
+    try {
+        const data = await fetchTMDB(`/${type}/${id}`);
         if (playerTitle) {
             const title = data.title || data.name;
             if (type === 'tv') {
@@ -495,7 +611,9 @@ function loadPlayer(type, id, season, episode) {
                 playerTitle.textContent = title;
             }
         }
-    }).catch(err => console.error('Error cargando título:', err));
+    } catch (err) {
+        console.error('Error cargando título:', err);
+    }
     
     // Crear botones de servidores
     controls.innerHTML = `
@@ -510,6 +628,19 @@ function loadPlayer(type, id, season, episode) {
     
     // Cargar el primer servidor
     changeServer(servers[0], type, id, season, episode);
+    
+    // Buscar torrents
+    if (torrentsSection) {
+        torrentsSection.style.display = 'block';
+        const torrentsList = document.getElementById('torrentsList');
+        if (torrentsList) {
+            torrentsList.innerHTML = '<p style="text-align:center;padding:20px;color:#999;"><i class="fa-solid fa-spinner fa-spin"></i> Buscando torrents en múltiples proveedores...</p>';
+        }
+        
+        const torrents = await searchTorrents(type, id, season, episode);
+        state.torrents = torrents;
+        renderTorrents(torrents);
+    }
 }
 
 function changeServer(server, type, id, season, episode, btnElement) {
@@ -577,7 +708,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Filtros películas
     const movieGenre = document.getElementById('movieGenre');
     const movieSort = document.getElementById('movieSort');
     const prevMovies = document.getElementById('prevMovies');
@@ -615,7 +745,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Filtros series
     const seriesGenre = document.getElementById('seriesGenre');
     const seriesSort = document.getElementById('seriesSort');
     const prevSeries = document.getElementById('prevSeries');
@@ -653,14 +782,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Router
     window.addEventListener('hashchange', handleRoute);
     
-    // Inicializar
     loadGenres();
     loadHome();
     handleRoute();
 });
 
 console.log('✅ CineStream cargado correctamente');
-console.log('📝 Servidores disponibles:', Object.keys(VIDEO_SERVERS).join(', '));
+console.log('📝 Servidores:', Object.keys(VIDEO_SERVERS).join(', '));
+console.log('🧲 Torrents: YTS, EZTV, RARBG, 1337x, ThePirateBay, KickassTorrents, TorrentGalaxy, MagnetDL, y más');
